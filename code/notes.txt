@@ -1,0 +1,14 @@
+-- Nema16 Motor WEIRD with this controller.
+  -> Trying Nema17 with higher amp rating.
+  -> Need different controller? Hope not.
+
+-- Max timer freq that seems to work is 80kHz.
+   Higher works from main loop, but ISR overhead
+   This is already with freq back up at 20MHz
+
+Design changes:
+-- Drive the controllers' enable pin too (so they can rest)
+-- Clock signal didn't work; just stick with edge interrupt handler
+-- Redesign around 48MHz CH32V003 in SOP16
+-- Use 5V for MCU for higher CPU freq
+-- Higher external OSC freq; with divider (can do on same 4096?)
