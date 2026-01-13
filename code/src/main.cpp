@@ -4,6 +4,11 @@
 
 #include "magic.h"
 
+static void loop_gliss();
+static void loop_hifreq();
+static void loop_4min();
+static void loop_eucli();
+
 #define PI 3.141592653589793
 #define TAU 6.28318548
 
@@ -103,6 +108,81 @@ ISR(TCB1_INT_vect)
 }
 
 void loop()
+{
+    delay(1);
+
+    // loop_gliss();
+    // loop_eucli();
+    // loop_4min();
+    // loop_hifreq();
+}
+
+// 7 of 16, 8 of 16
+static const uint8_t eucli_len = 16;
+static const uint8_t eucli1l[eucli_len] = {1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
+static const uint8_t eucli1r[eucli_len] = {1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0};
+
+const uint8_t *leu = eucli1l;
+const uint8_t *reu = eucli1r;
+
+static const uint16_t eucli_beat_msec = 300;
+uint32_t last_beat_msec = 0;
+uint8_t eucli_pos = 0;
+
+void loop_eucli()
+{
+    uint32_t msec = millis();
+    if (msec - last_beat_msec < eucli_beat_msec) return;
+    last_beat_msec = msec;
+
+    bool lpulse = leu[eucli_pos] == 1;
+    bool rpulse = reu[eucli_pos] == 1;
+
+    if (lpulse) VPORTB.OUT |= PIN5_bm;
+    if (rpulse) VPORTA.OUT |= PIN2_bm;
+    VPORTA.OUT &= ~PIN2_bm;
+    VPORTB.OUT &= ~PIN5_bm;
+
+    eucli_pos += 1;
+    if (eucli_pos == eucli_len) eucli_pos = 0;
+}
+
+void loop_gliss()
+{
+    double t = millis();
+    double tt = t * 0.00002;
+
+    double lper = 727;
+    if (tt < 1)
+        lper -= sin(tt * PI / 2) * 363;
+    else lper -= 363;
+
+    double rper = 727;
+    if (tt < 2)
+        rper -= sin(tt * PI / 4) * 363;
+    else rper -= 363;
+
+    if (tt > 2.2) lper = rper = 0;
+
+    cli();
+    lmotp = round(lper);
+    rmotp = round(rper);
+    sei();
+}
+
+void loop_hifreq()
+{
+    double lFreq = 1760;
+    double rFreq = lFreq * 3 / 2;
+    double lper = round(80000 / lFreq);
+    double rper = round(80000 / rFreq);
+    cli();
+    lmotp = lper;
+    rmotp = rper;
+    sei();
+}
+
+void loop_4min()
 {
     // delay(1);
     // return;
