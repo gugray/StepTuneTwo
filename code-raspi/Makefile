@@ -4,7 +4,7 @@ CXX_FLAGS = -std=c++11 -Wall -O3 -march=native -funroll-loops -fstrict-aliasing
 INCLUDES 	= -Isrc
 LIBS     	= -lpthread -lm
 
-BIN 			= st2
+BIN 			= st2-ctrl
 SRC_DIR 	= ./src
 BIN_DIR 	= ./bin
 OUT_DIR 	= ./out

@@ -1,6 +1,6 @@
 // Local dependencies
 #include "error.h"
-#include "hardware_controller.h"
+#include "hardware.h"
 #include "magic.h"
 
 // Global
@@ -10,9 +10,12 @@ int main(int argc, const char *argv[])
 {
     try
     {
-        HardwareController::set_led(true);
-        sleep(5);
-        HardwareController::set_led(false);
+        init_hw();
+        set_led(true);
+        send_i2c_cmd(0xf1);
+        sleep(2);
+        send_i2c_cmd(0xf0);
+        set_led(false);
         return 0;
     }
     catch (const st_exception &e)
