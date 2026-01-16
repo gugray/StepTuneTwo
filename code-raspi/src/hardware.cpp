@@ -20,7 +20,7 @@
 #include <vector>
 
 #define BLOCK_SIZE 4096
-#define HWCTRL_CYCLE_MSEC 20
+#define HWCTRL_CYCLE_MSEC 1
 
 static int file_i2c = -1;
 static pthread_t thread;
@@ -127,4 +127,22 @@ void send_i2c_cmd(uint8_t cmd)
 {
     Lock lock(&mut);
     commands.push_back(cmd);
+}
+
+void send_i2c_cmd1(uint8_t cmd, uint32_t arg)
+{
+    Lock lock(&mut);
+    commands.push_back(cmd);
+    uint8_t b3 = (arg & 0xff);
+    arg >>= 8;
+    uint8_t b2 = (arg & 0xff);
+    arg >>= 8;
+    uint8_t b1 = (arg & 0xff);
+    arg >>= 8;
+    uint8_t b0 = (arg & 0xff);
+    arg >>= 8;
+    commands.push_back(b0);
+    commands.push_back(b1);
+    commands.push_back(b2);
+    commands.push_back(b3);
 }

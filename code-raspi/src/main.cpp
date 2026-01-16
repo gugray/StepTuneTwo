@@ -12,9 +12,9 @@ int main(int argc, const char *argv[])
     {
         init_hw();
         set_led(true);
-        send_i2c_cmd(0xf1);
-        sleep(2);
-        send_i2c_cmd(0xf0);
+        send_i2c_cmd1(0x10, 39063);
+        sleep(4);
+        send_i2c_cmd1(0x10, 0);
         set_led(false);
         return 0;
     }
