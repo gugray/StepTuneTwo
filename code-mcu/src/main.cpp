@@ -1,30 +1,57 @@
-#include <Arduino.h>
 #include <Wire.h>
 #include <math.h>
 
 // clang-format off
-#define ONBOARD_LED_PIN     PIN_PA4
-#define RMOT_DIR_PIN        PIN_PA3
-#define RMOT_STEP_PIN       PIN_PA2
-#define LMOT_DIR_PIN        PIN_PA7
-#define LMOT_STEP_PIN       PIN_PB5
+#define ONBOARD_LED_PORT    PORTA
+#define ONBOARD_LED_BM      PIN4_bm
+#define LMOT_DIR_PORT       PORTA
+#define LMOT_DIR_BM         PIN7_bm
+#define LMOT_STEP_PORT      PORTB
+#define LMOT_STEP_BM        PIN5_bm
+#define RMOT_DIR_PORT       PORTA
+#define RMOT_DIR_BM         PIN3_bm
+#define RMOT_STEP_PORT      PORTA
+#define RMOT_STEP_BM        PIN2_bm
 #define I2C_ADDRESS         0x40
 #define RECV_BUF_SZ         32
+#define LARGE_NUM           0xffffffff
 // clang-format on
 
-static volatile uint8_t recvBuf[RECV_BUF_SZ];
-static volatile uint16_t recvCount = 0;
+// I2C variables
+static volatile uint8_t recv_buf[RECV_BUF_SZ];
+static volatile uint16_t recv_count = 0;
+
+// Global tick counter
+uint32_t ticks = 0;
+
+// Left motor period
+uint32_t lmotp = 7812;
+// Right motor period
+uint32_t rmotp = 420;
+// Motor control variables
+uint32_t lmot_next = LARGE_NUM;
+uint32_t rmot_next = LARGE_NUM;
+// LED control variable
+uint32_t led_off = LARGE_NUM;
 
 static void onWireReceive(int bytecount);
 static void onWireRequest();
 static void consumeBuffer();
+static void driveSignals();
 
 int main()
 {
-    init();
+    ONBOARD_LED_PORT.DIRSET = ONBOARD_LED_BM;
+    ONBOARD_LED_PORT.OUTSET = ONBOARD_LED_BM;
 
-    pinMode(ONBOARD_LED_PIN, OUTPUT);
-    digitalWrite(ONBOARD_LED_PIN, HIGH);
+    LMOT_DIR_PORT.DIRSET = LMOT_DIR_BM;
+    LMOT_STEP_PORT.DIRSET = LMOT_STEP_BM;
+    RMOT_DIR_PORT.DIRSET = RMOT_DIR_BM;
+    RMOT_STEP_PORT.DIRSET = RMOT_STEP_BM;
+
+    // Full CPU frequency
+    CCP = CCP_IOREG_gc;
+    CLKCTRL.MCLKCTRLB = 0x00;
 
     // Timer counter, prescaler 256
     // => increments 78125 times per second
@@ -40,21 +67,31 @@ int main()
     Wire.onRequest(onWireRequest);
 
     uint16_t cnt_last = TCA0.SINGLE.CNT;
-    uint32_t ticks = 0;
     while (true)
     {
         // 78125 Hz counter
         uint16_t cnt_now = TCA0.SINGLE.CNT;
         if (cnt_now != cnt_last)
         {
+            // Update tick counter
             uint16_t delta = cnt_now - cnt_last;
             cnt_last = cnt_now;
             ticks += delta;
+
+            // Skipped a tick? Flash led from ~50 msec
+            if (delta > 1)
+            {
+                ONBOARD_LED_PORT.OUTCLR = ONBOARD_LED_BM;
+                led_off = ticks + 4000;
+            }
+
+            // Pulse motors/LED if needed
+            driveSignals();
         }
 
         // I2C commands
         cli();
-        uint16_t count = recvCount;
+        uint16_t count = recv_count;
         if (count != 0) consumeBuffer();
         sei();
     }
@@ -68,8 +105,8 @@ static void onWireReceive(int byteCount)
     {
         int dd = Wire.read();
         if (dd == -1) break;
-        if (recvCount == RECV_BUF_SZ) continue;
-        recvBuf[recvCount++] = (uint8_t)dd;
+        if (recv_count == RECV_BUF_SZ) continue;
+        recv_buf[recv_count++] = (uint8_t)dd;
     }
 }
 
@@ -77,16 +114,63 @@ static void onWireRequest()
 {
 }
 
-void consumeBuffer()
+static inline __attribute__((always_inline)) void consumeBuffer()
 {
-    const uint8_t cmd = recvBuf[0];
-    recvCount = 0;
+    if (recv_count == 0) return;
+    const uint8_t cmd = recv_buf[0];
+    uint8_t consumed = 0;
     if (cmd == 0xf0) // light off
     {
-        digitalWrite(ONBOARD_LED_PIN, HIGH);
+        ONBOARD_LED_PORT.OUTSET = ONBOARD_LED_BM;
+        consumed = 1;
     }
     else if (cmd == 0xf1) // light on
     {
-        digitalWrite(ONBOARD_LED_PIN, LOW);
+        ONBOARD_LED_PORT.OUTCLR = ONBOARD_LED_BM;
+        consumed = 1;
+    }
+    else if (cmd == 0x10 && recv_count >= 5) // left motor period
+    {
+        consumed = 5;
+        lmotp = 0;
+        for (uint8_t i = 1; i < 5; ++i)
+        {
+            lmotp <<= 8;
+            lmotp += recv_buf[i];
+        }
+        if (lmotp == 0) lmot_next = LARGE_NUM;
+        else if (lmot_next == LARGE_NUM) lmot_next = ticks;
+        else
+        {
+            while (lmot_next > ticks + lmotp)
+                lmot_next -= lmotp;
+        }
+    }
+    // Shift buffer left
+    for (uint8_t i = 0; i + consumed < recv_count; ++i)
+    {
+        recv_buf[i] = recv_buf[i + consumed];
+    }
+    recv_count -= consumed;
+}
+
+static inline __attribute__((always_inline)) void driveSignals()
+{
+    if (ticks >= lmot_next)
+    {
+        LMOT_STEP_PORT.OUTSET = LMOT_STEP_BM;
+        lmot_next += lmotp;
+        LMOT_STEP_PORT.OUTCLR = LMOT_STEP_BM;
+    }
+    if (ticks >= rmot_next)
+    {
+        RMOT_STEP_PORT.OUTSET = RMOT_STEP_BM;
+        rmot_next += rmotp;
+        RMOT_STEP_PORT.OUTCLR = RMOT_STEP_BM;
+    }
+    if (ticks >= led_off)
+    {
+        ONBOARD_LED_PORT.OUTSET = ONBOARD_LED_BM;
+        led_off = LARGE_NUM;
     }
 }

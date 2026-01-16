@@ -1,6 +1,9 @@
 {
   "files.associations": {
     "*.json": "jsonc",
+    "*.tidal": "haskell",
+    "*.ljs": "javascript",
+    "*.bak": "cpp"
   },
   "editor.formatOnSave": true,
 }
